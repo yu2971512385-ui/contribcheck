@@ -120,6 +120,12 @@ class GitHub:
                 ) from error
             except urllib.error.URLError as error:
                 raise SystemExit(f"could not reach github: {error.reason}") from error
+            except OSError as error:
+                # A connection dropped mid-response arrives as a bare OSError
+                # rather than a URLError, and it is almost always transient.
+                if attempt == 3:
+                    raise SystemExit(f"could not reach github: {error}") from error
+                time.sleep(2 ** attempt)
         raise SystemExit("github kept refusing the request; try again in a minute")
 
     def file(self, repo: str, path: str) -> str | None:

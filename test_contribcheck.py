@@ -214,3 +214,27 @@ class TestErrors:
 def test_cli_rejects_a_bare_name(capsys):
     assert cc.main(["notarepo"]) == 2
     assert "expected OWNER/REPO" in capsys.readouterr().err
+
+
+def test_a_dropped_connection_is_retried_then_reported(monkeypatch):
+    api = cc.GitHub(token=None)
+    attempts = []
+
+    def flaky(url):
+        attempts.append(url)
+        if len(attempts) < 3:
+            raise ConnectionResetError("Remote end closed connection without response")
+        return {"ok": True}
+
+    monkeypatch.setattr(api, "_request", flaky)
+    monkeypatch.setattr(cc.time, "sleep", lambda _: None)
+    assert api.get("/x") == {"ok": True}
+
+    always = cc.GitHub(token=None)
+    monkeypatch.setattr(
+        always, "_request",
+        lambda url: (_ for _ in ()).throw(ConnectionResetError("gone")),
+    )
+    with pytest.raises(SystemExit) as caught:
+        always.get("/x")
+    assert "could not reach github" in str(caught.value)
